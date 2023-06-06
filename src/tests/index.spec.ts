@@ -1,10 +1,7 @@
-import { generateImages } from '..';
 import { generateImage } from '../resources/template';
-import { ImageConfig, ImageRequest, Theme, ThemeConfig } from '../types';
-import { generateTestImage } from './utils/generateTestImage';
-
-const getTitlePattern = (title: string = '') =>
-	new RegExp(`class="title">${title}</text>`);
+import { ImageConfig, ThemeConfig } from '../types';
+import { JSDOM } from 'jsdom';
+import { stringToSVGElement } from './utils/stringToSVGElement';
 
 describe('social media post generator service', () => {
 	describe('theme configuration', () => {
@@ -26,58 +23,53 @@ describe('social media post generator service', () => {
 		])(
 			'should return the correct theme when given $theme theme',
 			({ theme }) => {
-				// Arrange
-				const expected = generateTestImage(undefined, theme);
 				// Act
-				const actual = generateImage(theme, {
-					title: '',
-				});
+				const actual = generateImageAsHTML(
+					{
+						title: '',
+					},
+					theme
+				);
 
 				// Assert
-				expect(actual).toEqual(expected);
+				assertSVGThemeIsCorrect(actual, theme);
 			}
 		);
 	});
 
 	test('returns correct title', () => {
 		// Arrange
-		const title = 'my custom title';
+		const expected = 'my custom title';
 		const image: ImageConfig = {
-			title,
+			title: expected,
 			caption: '',
 			imageUrl: '',
 		};
-		const request: ImageRequest = {
-			images: [image],
-			theme: Theme.Dark,
-		};
 
 		// Act
-		const actual = generateImages(request);
+		const actual = generateImageAsHTML(image);
+		const element = getElementByTestIdOrFail(actual, 'title');
 
 		// Assert
-		expect(actual[0]).toMatch(getTitlePattern(title));
+		assertElementContent(element, expected);
 	});
 
-	describe('returns correct caption', () => {
-		test('returns correct caption', () => {
+	describe('caption', () => {
+		test('has correct content', () => {
 			// Arrange
-			const caption = 'my caption';
+			const expected = 'my caption';
+			const image: ImageConfig = {
+				title: '',
+				caption: expected,
+				imageUrl: '',
+			};
 
 			// Act
-			const actual = generateImage(
-				{
-					bg: '#22374F',
-					color: '#DFDCD4',
-				},
-				{
-					title: '',
-					caption,
-				}
-			);
+			const actual = generateImageAsHTML(image);
+			const element = getElementByTestIdOrFail(actual, 'caption');
 
 			// Assert
-			expect(actual).toContain(caption);
+			assertElementContent(element, expected);
 		});
 
 		test('should return author name when given author and caption', () => {
@@ -103,29 +95,42 @@ describe('social media post generator service', () => {
 			expect(actual).toContain(author);
 		});
 
-		test('should return no caption when its not provided', () => {
+		test('should be empty if not provided', () => {
 			// Arrange
-			const expected = /class="caption">\<\/text>/;
+			const expected = '';
 
 			// Act
-			const actual = generateImage(
-				{
-					bg: '#22374F',
-					color: '#DFDCD4',
-				},
-				{
-					title: '',
-					imageUrl: '',
-				}
-			);
+			const image = generateImageAsHTML({
+				title: '',
+				imageUrl: '',
+			});
 
 			// Assert
-			expect(actual).toMatch(expected);
+			const caption = getElementByTestIdOrFail(image, 'caption');
+			assertElementContent(caption, expected);
 		});
 
-		describe('image', () => {
-			test.todo('should return author source when author is passed');
-			test.todo('should return image source when imageUrl is passed');
+		describe('image element', () => {
+			test('should return author source when author is passed', () => {
+				// Arrange
+				const author: ImageConfig['author'] = 'pedro';
+
+				// Act
+				const svg = generateImageAsHTML({
+					title: '',
+					author,
+				});
+
+				// Assert
+				const image = getElementByTestIdOrFail<HTMLImageElement>(svg, 'image');
+				expect(image.getAttribute('src')).toContain(author);
+			});
+
+			test('should return image source when imageUrl is passed but author is not', () => {
+				//Arrange
+				const imageUrl = 'https://source.unsplash.com/random';
+			});
+
 			test.todo(
 				'should return author source when author and imageUrl are passed'
 			);
@@ -139,3 +144,35 @@ describe('social media post generator service', () => {
 		test.todo('schemas');
 	});
 });
+
+const assertSVGThemeIsCorrect = (el: SVGSVGElement, theme: ThemeConfig) => {
+	expect(el.dataset.color).toStrictEqual(theme.color);
+	expect(el.dataset.bg).toStrictEqual(theme.bg);
+};
+
+const assertElementContent = (el: Element, expected: string) => {
+	expect(el.textContent).toEqual(expected);
+};
+
+const getElementByTestIdOrFail = <T = Element>(
+	el: SVGSVGElement,
+	id: string
+): T => {
+	const node = el.querySelector(`[data-testid="${id}"]`);
+
+	if (!node) {
+		throw new Error('Element not found');
+	}
+
+	return node as T;
+};
+
+const generateImageAsHTML = (
+	image: ImageConfig,
+	theme: ThemeConfig = {
+		bg: '#22374F',
+		color: '#DFDCD4',
+	}
+) => {
+	return stringToSVGElement(generateImage(theme, image));
+};
